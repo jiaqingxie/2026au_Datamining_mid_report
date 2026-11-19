@@ -2,13 +2,17 @@
 \usepackage{amsfonts,amsmath,oldgerm,booktabs}
 \usetheme{sintef}
 \usepackage{xeCJK}
-\IfFontExistsTF{Noto Serif CJK SC}{%
-  \setCJKmainfont{Noto Serif CJK SC}%
+\IfFileExists{assets/NotoSansCJKsc-Regular.otf}{%
+  \setCJKmainfont[Path=assets/,AutoFakeBold]{NotoSansCJKsc-Regular.otf}%
 }{%
-  \IfFontExistsTF{SimSun}{%
-    \setCJKmainfont[AutoFakeBold]{SimSun}%
+  \IfFontExistsTF{Noto Serif CJK SC}{%
+    \setCJKmainfont{Noto Serif CJK SC}%
   }{%
-    \setCJKmainfont[BoldFont=FandolSong-Bold.otf]{FandolSong-Regular.otf}%
+    \IfFontExistsTF{SimSun}{%
+      \setCJKmainfont[AutoFakeBold]{SimSun}%
+    }{%
+      \setCJKmainfont[BoldFont=FandolSong-Bold.otf]{FandolSong-Regular.otf}%
+    }%
   }%
 }
 \graphicspath{{labreportdata/empirical_progress_20261102_v12/figures/}}
@@ -24,18 +28,18 @@
 \title{迈向快速且可泛化的开放域决策}
 \subtitle{Intern-Decision 作为System-1 决策层}
 % \course{Master's Degree in Computer Science}
-\author{周家纬、孙哲、赵博涵、张帅宇、李春晓、孙铮浩、谢嘉庆}
+\author{周家纬、孙哲、赵博涵、张帅宇\\李春晓、孙铮浩、谢嘉庆}
 % \IDnumber{1234567}
-\date{2026 年11 月19 日}
+\date{2026 年 11 月 20 日}
 
 \begin{document}
 \maketitle
 
-\begin{frame}{CPU 实验目标与研究重点}
+\begin{frame}{研究问题}
 \begin{itemize}
     \item 用 LabQueue 检验 Intern-Decision 0.8B 能否按给定规则选择调度动作，以及在资源规模和输入表示变化时的准确率。
-    \item 用独立校准集拟合温度，检查预测概率与观测正确率的吻合程度，以及置信度区分正确与错误决策的能力。
-    \item 训练传统分类器作为有监督基线，用它们初步测试固定升级预算下的路由和跨进程交接。
+    \item 比较温度校准前后的概率质量，以及置信度区分正确和错误决策的能力。
+    \item 在公开 JevBench 上测量思考预算对准确率的影响，并检验按置信度求助的准确率和延迟。
 \end{itemize}
 \end{frame}
 
@@ -112,12 +116,27 @@ exec "$E1_PYTHON" scripts/run_e1_baseline.py \
   \footnotesize SST-2 的三种模型均高于多数类基线，RTE 的三种模型均低于该基线。数据来源为 v12 阶段报告。
 \end{frame}
 
-\begin{frame}{E2｜快速决策与生成式推理的对照设计}
+\begin{frame}{E2 补充｜增加思考预算提高 JevBench 准确率}
   \small
+  在 JevBench 的 Easy、Original、Hard 共 231 题上，用同一 Qwen3.5-4B 权重比较三档思考预算。触及上限时强制结束思考，再按候选答案后缀的对数概率选答案。
+
+  \medskip
+  {\centering
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    \textbf{预算} & \textbf{总体准确率} & \textbf{Hard 准确率} & \textbf{自然结束} & \textbf{原文总体}\\
+    \midrule
+    关闭思考 & 77.06\% & 58.56\% & --      & 81.4\%\\
+    512 token  & 85.71\% & 71.17\% & 89/231  & 84.8\%\\
+    2048 token & 91.77\% & 83.78\% & 141/231 & 91.8\%\\
+    \bottomrule
+  \end{tabular}\par}
+
+  \medskip
   \begin{itemize}
-    \item 在同一批题目上比较 Intern-Decision 快速决策与同量级生成式模型的推理表现。
-    \item 已固定样本（632 条请求、含 1,032 个决策）和 128、512、2,048 token 三档生成预算。
-    \item GPU 测试待运行，将比较准确率、请求延迟和生成 token 数。
+    \item 本次为 \href{https://arxiv.org/abs/2610.02076v3}{LLM-as-Jev 表 16} 的独立部分复现。关闭思考时与原文差约 4.3 个百分点，2048 档的总体准确率接近原文。
+    \item 原定 E2 的 632 条请求与 128、512、2048 token 配对实验仍待完成。
   \end{itemize}
 \end{frame}
 
@@ -254,12 +273,60 @@ exec "$E1_PYTHON" scripts/run_e1_baseline.py \
   \end{itemize}
 \end{frame}
 
-\begin{frame}{E3｜低置信度时，求助能提高准确率吗？}
+\begin{frame}{E3｜LabQueue 的传统分类器路由}
   \small
   \begin{itemize}
-    \item \textbf{怎么测}\quad Jev 模型先作答。置信度低于验证集定好的门槛时，采用慢模型 Qwen 4b 的答案。到测试集比较求助前后的准确率。
-    \item \textbf{已实测}\quad 用两个传统分类器试跑，结构化逻辑回归先答，梯度提升接手。每个种子的四个测试集共用一个门槛。IID 平均准确率从 84.83\% 升至 87.00\%，部分 OOD 准确率下降。
-    \item \textbf{Jev 的实验进度}\quad 已收集验证集上 720 条 Jev 决策及置信度。接下来收集生成式模型的同题答案，再定门槛，并在留出集上测整体准确率和求助次数。
+    \item \textbf{策略}\quad 结构化逻辑回归先答，低置信度时由梯度提升接手。每个种子的四个测试集共用在验证集定好的门槛。
+    \item \textbf{结果}\quad IID 三种子平均准确率从 84.83\% 升至 87.00\%，部分 OOD 条件准确率下降。
+    \item LabQueue 已收集 720 条 Intern-Decision 路由验证决策。生成式模型的同题对照仍待完成。
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{E3｜JevBench 冻结路由纠正 4 道留出题}
+  \small
+  用 45 题拟合温度 $T=1.585$，另用 45 题定门槛。Intern-Decision 4B 的校准置信度低于门槛时，调用 Qwen3-4B-Thinking-2507。生成无效时保留 S1 答案。
+
+  \medskip
+  {\centering
+  \setlength{\tabcolsep}{6pt}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    \textbf{S2 上限} & \textbf{S2 触顶} & \textbf{冻结策略求助} & \textbf{留出准确率}\\
+    \midrule
+    512 token  & 72/141 & 0/141  & 121/141（85.82\%）\\
+    2048 token & 32/141 & 24/141 & 125/141（88.65\%）\\
+    \bottomrule
+  \end{tabular}\par}
+
+  \medskip
+  \begin{itemize}
+    \item 2048 档的门槛为 0.7154。24 次求助中纠正 4 题、改错 0 题、回退 16 题。
+    \item 相对仅用 S1 提升 2.84 个百分点，按场景组配对的 95\% 区间为 $[0.68,\,5.63]$ 个百分点。同预算随机求助的期望准确率为 86.30\%。
+  \end{itemize}
+  {\footnotesize 2048 档重跑触顶题，复用 512 档提前结束的回答。两档策略均在同一批 141 道留出题上离线重放。\par}
+\end{frame}
+
+\begin{frame}{E3｜HTTP 实测显示准确率与延迟的取舍}
+  \small
+  141 道留出题，每题执行三种策略，共 423 次本机 HTTP 请求。四个 H200 副本各保持一个在途请求，统计客户端收到并解析结果的时间。
+
+  \medskip
+  {\centering
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    \textbf{策略} & \textbf{准确率} & \textbf{P50（秒）} & \textbf{P95（秒）} & \textbf{S2 次数}\\
+    \midrule
+    仅 S1     & 85.82\% & 0.044 & 0.90   & 0\\
+    冻结路由  & 87.94\% & 0.756 & 40.00  & 24\\
+    全部 S2   & 78.01\% & 12.11 & 275.88 & 141\\
+    \bottomrule
+  \end{tabular}\par}
+
+  \medskip
+  \begin{itemize}
+    \item 冻结路由比仅用 S1 多答对 3 题。24 次求助中有 17 次回退，其中 1 题离线时曾纠正。
+    \item S2 升级分支的 P95 为 467.0 秒。延迟口径为预热后的本机 HTTP，跨主机网络和外部 API 尚待测量。
   \end{itemize}
 \end{frame}
 
@@ -320,6 +387,15 @@ exec "$E1_PYTHON" scripts/run_e1_baseline.py \
 
   \smallskip
   随机森林用标签从结构化字段学习选动作。Jev 读文字规则，零样本执行资源比较和优先级判断。微调能缩小多少差距仍待同一测试集上的前后对照。
+\end{frame}
+
+\begin{frame}{阶段结论与实验覆盖}
+  \small
+  \begin{itemize}
+    \item \textbf{LabQueue}\quad 0.8B 零样本完成三个种子、十二个留出条件。温度校准改善概率指标，OOD 错题排序的变化仍有不确定性。
+    \item \textbf{JevBench}\quad 公开题上的三档思考对照、冻结路由与同机 HTTP 均已完成。更长的生成预算让更多困难题得到有效回答，升级分支仍有明显长尾延迟。
+    \item \textbf{尚待完成}\quad E1 的官方七套件与 pilot，E2 的完整固定样本对照，E3 的 LabQueue 生成式路由及跨节点 API，E4 的三种子微调与能力保持评测。
+  \end{itemize}
 \end{frame}
 
 \section{Supplementary}
